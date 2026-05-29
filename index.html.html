@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner de Alunos - Online (Firebase)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background-color: #f4f4f9; }
+        h1, h2, h3 { color: #333; text-align: center; font-size: 1.5rem; }
+        h3 { font-size: 1.2rem; text-align: left; border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 25px;}
+        .container { max-width: 100%; margin: auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .tabs { display: flex; justify-content: space-around; margin-bottom: 20px; flex-wrap: wrap; gap: 5px; }
+        .tab { padding: 10px; background: #ddd; cursor: pointer; border-radius: 4px; font-weight: bold; flex: 1; text-align: center; font-size: 0.9rem; transition: 0.3s; }
+        .tab.active { background: #4CAF50; color: white; }
+        .section { display: none; }
+        .section.active { display: block; }
+        
+        input[type="text"], input[type="file"], input[type="date"] { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;}
+        button { width: 100%; padding: 12px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-bottom: 10px; font-weight: bold;}
+        button:hover { background: #0056b3; }
+        
+        #qr-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .qr-card { text-align: center; border: 1px solid #ccc; padding: 10px; border-radius: 8px; background: #fff;}
+        
+        #reader { width: 100%; margin: 0 auto; border-radius: 8px; overflow: hidden; }
+        #mensagem { text-align: center; font-size: 18px; margin-top: 15px; font-weight: bold; min-height: 30px; }
+        .success { color: green; }
+        .warning { color: orange; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+        table, th, td { border: 1px solid #ddd; }
+        th, td { padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+
+        /* Estilos do Modal de Confirmação */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
+        .modal-content { background-color: #fff; padding: 20px; border-radius: 10px; text-align: center; width: 90%; max-width: 350px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .modal-content img { width: 150px; height: 150px; border-radius: 50%; object-fit: cover; margin: 15px 0; border: 4px solid #4CAF50; box-shadow: 0 2px 10px rgba(0,0,0,0.2);}
+        .modal-content h3 { margin: 10px 0; font-size: 1.4rem; color: #333; }
+        .btn-confirmar { background-color: #28a745; margin-top: 10px; }
+        .btn-cancelar { background-color: #dc3545; }
+
+        .status-online { text-align: center; font-size: 12px; color: green; font-weight: bold; margin-bottom: 10px;}
+        .lista-excluir-container { max-height: 300px; overflow-y: auto; margin-top: 10px; border: 1px solid #eee; padding: 5px; border-radius: 4px; }
+        
+        .filtro-container { background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .filtro-container h3 { margin-top: 0; border: none; font-size: 1rem; margin-bottom: 10px;}
+
+        @media (max-width: 600px) { h1 { font-size: 1.2rem; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Controle Escolar Online</h1>
+    <div id="statusConexao" class="status-online">🔴 Desconectado (Configure o Firebase)</div>
+    
+    <div class="tabs">
+        <div class="tab" onclick="showSection('cadastro')">👤 Cadastro</div>
+        <div class="tab active" onclick="showSection('leitor')">📸 Câmera</div>
+        <div class="tab" onclick="showSection('gerador')">🖨️ QRs</div>
+        <div class="tab" onclick="showSection('registos')">📋 Histórico (Ao Vivo)</div>
+    </div>
+
+    <div id="cadastro" class="section">
+        <h2>Cadastrar Aluno</h2>
+        <input type="text" id="nomeNovoAluno" placeholder="Nome completo do aluno">
+        <label style="font-weight: bold; font-size: 14px; color: #555;">Foto do Aluno:</label>
+        <input type="file" id="fotoNovoAluno" accept="image/*">
+        <button onclick="salvarAluno()" style="background-color: #28a745;">💾 Salvar Online</button>
+        
+        <h3>Alunos na Nuvem (<span id="totalAlunos">0</span>)</h3>
+        <p style="font-size: 12px; color: gray; margin-bottom: 5px;">Gerencie os alunos cadastrados abaixo:</p>
+        <div class="lista-excluir-container" id="listaAlunosExcluir">
+            <p style="color: gray; font-size: 13px; text-align: center;">Carregando alunos...</p>
+        </div>
+    </div>
+
+    <div id="leitor" class="section active">
+        <h2>Aponte o QR Code</h2>
+        <div id="reader"></div>
+        <div id="mensagem"></div>
+    </div>
+
+    <div id="gerador" class="section">
+        <h2>Gerar QR Codes</h2>
+        <button onclick="imprimirQRCodes()" style="background-color: #28a745;">🖨️ Imprimir Todos</button>
+        <div id="qr-container"></div>
+    </div>
+
+    <div id="registos" class="section">
+        <h2>Registros de Hoje</h2>
+        
+        <div class="filtro-container">
+            <h3>Exportar Histórico (Excel)</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 12px; font-weight: bold;">Data Início:</label>
+                    <input type="date" id="dataInicioExcel">
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 12px; font-weight: bold;">Data Fim:</label>
+                    <input type="date" id="dataFimExcel">
+                </div>
+            </div>
+            <button onclick="exportarExcel()" style="background-color: #17a2b8; margin: 0;">📥 Baixar Planilha Filtrada</button>
+            <p style="font-size: 11px; color: #666; margin-top: 8px; margin-bottom: 0; text-align: center;">*Deixe os campos em branco para baixar todo o histórico.</p>
+        </div>
+        
+        <table id="tabelaRegistos">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Entrada</th>
+                    <th>Saída</th>
+                </tr>
+            </thead>
+            <tbody id="corpoTabela"></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modalConfirmacao" class="modal">
+    <div class="modal-content">
+        <h2 id="modalAcao" style="margin-top: 0;">Confirmação</h2>
+        <img id="modalFoto" src="" alt="Foto do Aluno">
+        <h3 id="modalNome">Nome do Aluno</h3>
+        <button id="btnConfirmarAcesso" class="btn-confirmar" onclick="confirmarAcesso()">✅ Confirmar</button>
+        <button class="btn-cancelar" onclick="fecharModal()">❌ Cancelar</button>
+    </div>
+</div>
+
+<script>
+    // =========================================================================
+    // CONFIGURAÇÕES DO SEU FIREBASE (COLE AS SUAS CHAVES AQUI)
+    // =========================================================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyD7bvM5b_l1UhRekuge9ex2xAbAz_fR71s",
+        authDomain: "entradav1.firebaseapp.com",
+        databaseURL: "https://entradav1-default-rtdb.firebaseio.com",
+        projectId: "entradav1",
+        storageBucket: "entradav1.firebasestorage.app",
+        messagingSenderId: "479561827512",
+        appId: "1:479561827512:web:d3bcd456576398a220204d"
+    };
+
+    if(firebaseConfig.apiKey !== "COLE_AQUI_A_SUA_API_KEY") {
+        firebase.initializeApp(firebaseConfig);
+        document.getElementById('statusConexao').innerHTML = "🟢 Conectado ao Firebase Online";
+    }
+
+    const db = typeof firebase !== 'undefined' && firebase.apps.length > 0 ? firebase.database() : null;
+
+    let alunosCadastrados = {}; 
+    let registrosDeHoje = {};
+    let scanPausado = false; 
+    let dadosPendentes = null;
+
+    function getDataHoje() { return new Date().toISOString().split('T')[0]; }
+
+    function showSection(sectionId) {
+        document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.getElementById(sectionId).classList.add('active');
+        if(event && event.target) event.target.classList.add('active');
+    }
+
+    if (db) {
+        db.ref('alunos').on('value', (snapshot) => {
+            alunosCadastrados = snapshot.val() || {};
+            document.getElementById('totalAlunos').innerText = Object.keys(alunosCadastrados).length;
+            atualizarTelaQRCodes();
+            atualizarListaExcluirHTML(); 
+        });
+
+        const dataHoje = getDataHoje();
+        db.ref(`registros/${dataHoje}`).on('value', (snapshot) => {
+            registrosDeHoje = snapshot.val() || {};
+            atualizarTabelaHtml();
+        });
+    }
+
+    function limparChaveFirebase(nome) { return nome.trim().replace(/[\.\#\$\[\]]/g, ''); }
+
+    function comprimirImagem(file, callback) {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = function(e) {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 250;
+                let width = img.width, height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                } else {
+                    if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                }
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                callback(canvas.toDataURL('image/jpeg', 0.6));
+            }
+        }
+    }
+
+    function salvarAluno() {
+        if (!db) { alert("Configure o Firebase primeiro no código."); return; }
+
+        const nome = document.getElementById('nomeNovoAluno').value;
+        const fileInput = document.getElementById('fotoNovoAluno');
+        if (!nome) { alert("Digite o nome!"); return; }
+        
+        const chave = limparChaveFirebase(nome);
+
+        if (fileInput.files && fileInput.files[0]) {
+            comprimirImagem(fileInput.files[0], function(base64Img) {
+                db.ref(`alunos/${chave}`).set({ nome: nome.trim(), foto: base64Img })
+                  .then(() => alert(`Aluno(a) ${nome} cadastrado com sucesso nas nuvens!`));
+                document.getElementById('nomeNovoAluno').value = "";
+                document.getElementById('fotoNovoAluno').value = "";
+            });
+        } else {
+            db.ref(`alunos/${chave}`).set({ nome: nome.trim(), foto: "" })
+              .then(() => alert(`Aluno(a) ${nome} cadastrado (SEM FOTO) nas nuvens!`));
+            document.getElementById('nomeNovoAluno').value = "";
+        }
+    }
+
+    function atualizarListaExcluirHTML() {
+        const container = document.getElementById('listaAlunosExcluir');
+        const chaves = Object.keys(alunosCadastrados);
+
+        if (chaves.length === 0) {
+            container.innerHTML = "<p style='color: gray; font-size: 13px; text-align: center;'>Nenhum aluno cadastrado ainda.</p>";
+            return;
+        }
+
+        let html = "<table style='width:100%; font-size: 13px;'><tbody>";
+        chaves.forEach(chave => {
+            const aluno = alunosCadastrados[chave];
+            html += `<tr>
+                <td style='font-weight:bold;'>${aluno.nome}</td>
+                <td style='text-align: right; width: 90px;'>
+                    <button onclick="excluirAluno('${chave}', '${aluno.nome}')" style='background-color:#dc3545; padding: 6px 10px; font-size:12px; margin:0; width:auto;'>❌ Excluir</button>
+                </td>
+            </tr>`;
+        });
+        html += "</tbody></table>";
+        container.innerHTML = html;
+    }
+
+    function excluirAluno(chave, nome) {
+        if (!db) return;
+        if (confirm(`Tem certeza absoluta que deseja excluir o(a) aluno(a) "${nome}"?\nIsso removerá a foto e o QR Code dele do sistema.`)) {
+            db.ref(`alunos/${chave}`).remove()
+                .then(() => alert(`${nome} removido com sucesso!`))
+                .catch(err => alert("Erro ao excluir: " + err));
+        }
+    }
+
+    function atualizarTelaQRCodes() {
+        const container = document.getElementById('qr-container');
+        container.innerHTML = ''; 
+        const chaves = Object.keys(alunosCadastrados);
+
+        chaves.forEach(chave => {
+            const aluno = alunosCadastrados[chave];
+            const card = document.createElement('div');
+            card.className = 'qr-card';
+            card.innerHTML = `<h3 style="margin:5px 0; font-size:16px;">${aluno.nome}</h3>`;
+            const qrDiv = document.createElement('div');
+            new QRCode(qrDiv, { text: chave, width: 100, height: 100 });
+            card.appendChild(qrDiv);
+            container.appendChild(card);
+        });
+    }
+
+    function imprimirQRCodes() {
+        const conteudo = document.getElementById('qr-container').innerHTML;
+        if (!conteudo) { alert("Sem alunos para imprimir."); return; }
+        const janela = window.open('', '', 'height=600,width=800');
+        janela.document.write('<html><head><title>Imprimir</title><style>.qr-card{display:inline-block; margin:15px; text-align:center; font-family:Arial; border:1px solid #000; padding:10px;}</style></head><body>' + conteudo + '</body></html>');
+        janela.document.close();
+        setTimeout(() => janela.print(), 500);
+    }
+
+    function registarAcesso(chaveLida) {
+        if (scanPausado || !db) return; 
+
+        const alunoInfo = alunosCadastrados[chaveLida];
+        const msgDiv = document.getElementById('mensagem');
+
+        if (!alunoInfo) {
+            scanPausado = true;
+            msgDiv.innerHTML = `<span class="warning">⚠️ QR Code não cadastrado no sistema.</span>`;
+            setTimeout(() => { msgDiv.innerHTML = ""; scanPausado = false; }, 3000);
+            return;
+        }
+
+        const dataHoje = getDataHoje();
+        const registroDoAlunoHoje = registrosDeHoje[chaveLida];
+        let tipoAcao = "";
+
+        if (!registroDoAlunoHoje || !registroDoAlunoHoje.entrada) {
+            tipoAcao = "Entrada";
+        } else if (!registroDoAlunoHoje.saida) {
+            tipoAcao = "Saída";
+        } else {
+            scanPausado = true;
+            msgDiv.innerHTML = `<span class="warning">⚠️ ${alunoInfo.nome} já entrou e saiu hoje.</span>`;
+            setTimeout(() => { msgDiv.innerHTML = ""; scanPausado = false; }, 3000);
+            return;
+        }
+
+        scanPausado = true; 
+        dadosPendentes = { chave: chaveLida, nome: alunoInfo.nome, tipo: tipoAcao, dataHoje: dataHoje };
+
+        document.getElementById('modalAcao').innerText = `Confirmar ${tipoAcao}`;
+        document.getElementById('modalAcao').style.color = (tipoAcao === "Entrada") ? "#007BFF" : "#FF8C00";
+        document.getElementById('modalNome').innerText = alunoInfo.nome;
+        
+        const placeholderImg = 'https://via.placeholder.com/150/cccccc/666666?text=Sem+Foto';
+        document.getElementById('modalFoto').src = alunoInfo.foto ? alunoInfo.foto : placeholderImg;
+
+        document.getElementById('modalConfirmacao').style.display = 'flex';
+    }
+
+    function confirmarAcesso() {
+        if (!dadosPendentes || !db) return;
+
+        const chave = dadosPendentes.chave;
+        const nome = dadosPendentes.nome;
+        const dataHoje = dadosPendentes.dataHoje;
+        const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        
+        const msgDiv = document.getElementById('mensagem');
+
+        if (dadosPendentes.tipo === "Entrada") {
+            db.ref(`registros/${dataHoje}/${chave}`).set({
+                nome: nome,
+                entrada: horaAtual,
+                saida: ""
+            });
+            msgDiv.innerHTML = `<span class="success">✅ ENTRADA REGISTRADA: ${nome}</span>`;
+        } else {
+            db.ref(`registros/${dataHoje}/${chave}`).update({
+                saida: horaAtual
+            });
+            msgDiv.innerHTML = `<span class="success">✅ SAÍDA REGISTRADA: ${nome}</span>`;
+        }
+
+        fecharModal();
+        setTimeout(() => { msgDiv.innerHTML = ""; }, 3500);
+    }
+
+    function fecharModal() {
+        document.getElementById('modalConfirmacao').style.display = 'none';
+        dadosPendentes = null;
+        setTimeout(() => { scanPausado = false; }, 1500);
+    }
+
+    function atualizarTabelaHtml() {
+        const tbody = document.getElementById('corpoTabela');
+        tbody.innerHTML = '';
+        const chaves = Object.keys(registrosDeHoje);
+        
+        chaves.reverse().forEach(chave => {
+            const linha = registrosDeHoje[chave];
+            tbody.innerHTML += `<tr><td>${linha.nome}</td><td>${linha.entrada}</td><td>${linha.saida || '-'}</td></tr>`;
+        });
+    }
+
+    // =========================================================================
+    // LÓGICA ATUALIZADA: EXPORTAR HISTÓRICO COM FILTRO DE DATAS
+    // =========================================================================
+    function exportarExcel() {
+        if (!db) { alert("Firebase não conectado."); return; }
+
+        const dataInicio = document.getElementById('dataInicioExcel').value;
+        const dataFim = document.getElementById('dataFimExcel').value;
+
+        if (dataInicio && dataFim && dataInicio > dataFim) {
+            alert("A data de início não pode ser maior que a data de fim.");
+            return;
+        }
+
+        db.ref('registros').once('value').then((snapshot) => {
+            const todosRegistros = snapshot.val();
+            if (!todosRegistros) {
+                alert("Nenhum registro encontrado no sistema para exportar.");
+                return;
+            }
+
+            let csvContent = "\ufeff"; 
+            csvContent += "Data;Nome do Aluno;Horário de Entrada;Horário de Saída\n";
+            let linhasAdicionadas = 0;
+
+            Object.keys(todosRegistros).forEach(dataChave => {
+                
+                // Lógica para verificar se a data atual do Firebase está dentro do filtro escolhido
+                let dataValida = true;
+                if (dataInicio && dataChave < dataInicio) dataValida = false;
+                if (dataFim && dataChave > dataFim) dataValida = false;
+
+                if (dataValida) {
+                    const partes = dataChave.split('-');
+                    const dataFormatada = partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : dataChave;
+
+                    const alunosNessaData = todosRegistros[dataChave];
+                    Object.keys(alunosNessaData).forEach(alunoChave => {
+                        const reg = alunosNessaData[alunoChave];
+                        const nome = reg.nome || "";
+                        const entrada = reg.entrada || "-";
+                        const saida = reg.saida || "-";
+
+                        csvContent += `${dataFormatada};${nome};${entrada};${saida}\n`;
+                        linhasAdicionadas++;
+                    });
+                }
+            });
+
+            if (linhasAdicionadas === 0) {
+                alert("Nenhum registro encontrado para o período selecionado.");
+                return;
+            }
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            
+            // Monta um nome de arquivo inteligente dependendo do filtro
+            let nomeArquivo = "historico_chamada_completo.csv";
+            if(dataInicio && !dataFim) nomeArquivo = `historico_a_partir_de_${dataInicio}.csv`;
+            else if(!dataInicio && dataFim) nomeArquivo = `historico_ate_${dataFim}.csv`;
+            else if(dataInicio && dataFim) nomeArquivo = `historico_${dataInicio}_a_${dataFim}.csv`;
+
+            link.setAttribute("download", nomeArquivo);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+        }).catch(err => {
+            console.error(err);
+            alert("Erro ao gerar planilha: " + err);
+        });
+    }
+
+    // Inicialização do leitor HTML5
+    window.addEventListener('load', () => {
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: {width: 250, height: 250}, videoConstraints: { facingMode: "environment" } }, false
+        );
+        html5QrcodeScanner.render((text) => registarAcesso(text), () => {});
+    });
+
+</script>
+</body>
+</html>
