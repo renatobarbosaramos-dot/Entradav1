@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle Escolar Online</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background-color: #f4f4f9; }
+        h1, h2 { color: #333; text-align: center; }
+        h1 { font-size: 1.5rem; margin: 5px 0; }
+        h2 { font-size: 1.3rem; }
+        h3 { font-size: 1.1rem; text-align: left; border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 20px; color: #444; }
+
+        .container { max-width: 100%; margin: auto; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+
+        /* HEADER DA INSTITUIÇÃO */
+        #headerInstituicao { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 15px; background: linear-gradient(135deg, #2c3e50, #3498db); border-radius: 8px; margin-bottom: 12px; }
+        #logoInstituicao { width: 60px; height: 60px; border-radius: 8px; object-fit: contain; display: none; background: white; }
+        #nomeInstituicaoDisplay { color: white; font-size: 1.4rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+        /* PAINEL DE CONFIG */
+        #painelConfig { background: #eaf4fb; border: 1px dashed #3498db; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        #painelConfig h3 { border-color: #3498db; color: #2980b9; margin-top: 0; }
+        .config-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        .config-row > div { flex: 1; min-width: 200px; }
+
+        .tabs { display: flex; justify-content: space-around; margin-bottom: 20px; flex-wrap: wrap; gap: 5px; }
+        .tab { padding: 10px; background: #ddd; cursor: pointer; border-radius: 4px; font-weight: bold; flex: 1; text-align: center; font-size: 0.85rem; transition: 0.3s; min-width: 70px; }
+        .tab.active { background: #4CAF50; color: white; }
+        .section { display: none; }
+        .section.active { display: block; }
+
+        label.field-label { font-weight: bold; font-size: 13px; color: #555; display: block; margin-bottom: 4px; }
+        input[type="text"], input[type="number"], input[type="file"], input[type="date"], select {
+            width: 100%; padding: 9px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;
+        }
+        button { width: 100%; padding: 11px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 15px; margin-bottom: 10px; font-weight: bold; transition: 0.2s; }
+        button:hover { opacity: 0.88; }
+        .btn-verde { background-color: #28a745; }
+        .btn-laranja { background-color: #fd7e14; }
+        .btn-cinza { background-color: #6c757d; }
+        .btn-info { background-color: #17a2b8; }
+        .btn-roxo { background-color: #6f42c1; }
+
+        #qr-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .qr-card { text-align: center; border: 1px solid #ccc; padding: 10px; border-radius: 8px; background: #fff; }
+        #reader { width: 100%; margin: 0 auto; border-radius: 8px; overflow: hidden; }
+        #mensagem { text-align: center; font-size: 18px; margin-top: 15px; font-weight: bold; min-height: 30px; }
+        .success { color: green; }
+        .warning { color: orange; }
+
+        /* MODAL */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
+        .modal-content { background-color: #fff; padding: 20px; border-radius: 10px; text-align: center; width: 90%; max-width: 360px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .modal-content img { width: 150px; height: 150px; border-radius: 50%; object-fit: cover; margin: 15px 0; border: 4px solid #4CAF50; }
+        .btn-confirmar { background-color: #28a745; }
+        .btn-cancelar { background-color: #dc3545; }
+
+        .status-online { text-align: center; font-size: 12px; color: green; font-weight: bold; margin-bottom: 8px; }
+
+        /* LISTA DE ALUNOS */
+        .lista-excluir-container { max-height: 320px; overflow-y: auto; margin-top: 10px; border: 1px solid #eee; border-radius: 4px; }
+        .aluno-row { display: flex; align-items: center; padding: 7px 10px; border-bottom: 1px solid #f0f0f0; gap: 8px; }
+        .aluno-row:last-child { border-bottom: none; }
+        .aluno-nome { flex: 1; font-weight: bold; font-size: 13px; }
+        .aluno-info { font-size: 11px; color: #888; }
+        .btn-mini { padding: 5px 9px; font-size: 12px; width: auto; margin: 0; border-radius: 4px; }
+
+        /* FILTROS HISTÓRICO */
+        .filtro-container { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
+        .filtro-container h3 { margin-top: 0; border: none; font-size: 1rem; margin-bottom: 10px; }
+        .filtro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        @media (min-width: 600px) { .filtro-grid { grid-template-columns: repeat(3, 1fr); } }
+
+        /* KPI CARDS */
+        .kpi-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .kpi-card { flex: 1; min-width: 100px; background: white; border-radius: 8px; padding: 12px 10px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.1); border-top: 4px solid #ccc; }
+        .kpi-card.verde { border-top-color: #28a745; }
+        .kpi-card.vermelho { border-top-color: #dc3545; }
+        .kpi-card.azul { border-top-color: #007bff; }
+        .kpi-card .kpi-num { font-size: 2rem; font-weight: bold; line-height: 1; }
+        .kpi-card .kpi-label { font-size: 11px; color: #777; margin-top: 4px; }
+        .kpi-card .kpi-detalhe { font-size: 12px; font-weight: bold; margin-top: 4px; color: #555; }
+
+        /* TABELA */
+        .tabela-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.8rem; min-width: 700px; }
+        table, th, td { border: 1px solid #ddd; }
+        th, td { padding: 7px 8px; text-align: left; vertical-align: middle; }
+        th { background-color: #4CAF50; color: white; white-space: nowrap; }
+        tr.presenca { background-color: #d4edda; }
+        tr.falta { background-color: #f8d7da; }
+
+        /* BANCO DE FALTAS */
+        .badge-faltas { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; color: white; }
+        .faltas-verde { background-color: #28a745; }
+        .faltas-amarelo { background-color: #ffc107; color: #333; }
+        .faltas-vermelho { background-color: #dc3545; }
+
+        /* FORM CADASTRO GRID */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+        @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
+        .form-grid .full { grid-column: 1 / -1; }
+
+        .separador { border: none; border-top: 2px dashed #ddd; margin: 15px 0; }
+
+        @media (max-width: 600px) { h1 { font-size: 1.1rem; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- HEADER INSTITUIÇÃO -->
+    <div id="headerInstituicao">
+        <img id="logoInstituicao" src="" alt="Logo">
+        <span id="nomeInstituicaoDisplay">Controle Escolar Online</span>
+    </div>
+
+    <div id="statusConexao" class="status-online">🔴 Desconectado (Configure o Firebase)</div>
+
+    <!-- PAINEL CONFIG -->
+    <div id="painelConfig">
+        <h3>⚙️ Configurações da Instituição</h3>
+        <div class="config-row">
+            <div>
+                <label class="field-label">Nome da Instituição:</label>
+                <input type="text" id="cfgNomeInstituicao" placeholder="Ex: Escola Municipal João da Silva">
+            </div>
+            <div>
+                <label class="field-label">Logomarca (imagem):</label>
+                <input type="file" id="cfgLogoInstituicao" accept="image/*">
+            </div>
+            <div style="flex: 0 0 auto; align-self: flex-end;">
+                <button onclick="salvarConfiguracoes()" class="btn-roxo" style="margin-bottom:10px;">💾 Salvar Config</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ABAS -->
+    <div class="tabs">
+        <div class="tab" onclick="showSection('cadastro', this)">👤 Cadastro</div>
+        <div class="tab active" onclick="showSection('leitor', this)">📸 Câmera</div>
+        <div class="tab" onclick="showSection('gerador', this)">🖨️ QRs</div>
+        <div class="tab" onclick="showSection('registos', this)">📋 Histórico</div>
+    </div>
+
+    <!-- ======================== ABA CADASTRO ======================== -->
+    <div id="cadastro" class="section">
+        <h2>Cadastrar / Editar Aluno</h2>
+        <input type="hidden" id="editandoChave">
+
+        <div class="form-grid">
+            <div class="full">
+                <label class="field-label">Nome Completo: *</label>
+                <input type="text" id="nomeNovoAluno" placeholder="Nome completo do aluno">
+            </div>
+            <div>
+                <label class="field-label">Matrícula: *</label>
+                <input type="text" id="matriculaNovoAluno" placeholder="Ex: 2024001">
+            </div>
+            <div>
+                <label class="field-label">Turma:</label>
+                <input type="text" id="turmaNovoAluno" placeholder="Ex: 3A, 2B...">
+            </div>
+            <div>
+                <label class="field-label">Turno:</label>
+                <select id="turnoNovoAluno">
+                    <option value="">-- Selecione --</option>
+                    <option value="Manhã">Manhã</option>
+                    <option value="Tarde">Tarde</option>
+                    <option value="Noite">Noite</option>
+                </select>
+            </div>
+            <div>
+                <label class="field-label">Foto do Aluno:</label>
+                <input type="file" id="fotoNovoAluno" accept="image/*">
+            </div>
+        </div>
+
+        <button id="btnSalvarAluno" onclick="salvarAluno()" class="btn-verde">💾 Salvar Online</button>
+        <button id="btnCancelarEdicao" onclick="cancelarEdicao()" class="btn-cinza" style="display:none;">✖ Cancelar Edição</button>
+
+        <hr class="separador">
+        <h3>📥 Cadastro em Massa (Excel/CSV)</h3>
+        <p style="font-size: 12px; color: #666; margin: 0 0 8px;">Importe vários alunos de uma vez com uma planilha Excel.</p>
+        <button onclick="baixarPlanilhaModelo()" class="btn-info">📋 Baixar Planilha Modelo (.xlsx)</button>
+        <label class="field-label">Importar planilha preenchida:</label>
+        <input type="file" id="arquivoImportacao" accept=".xlsx,.csv">
+        <button onclick="importarPlanilha()" class="btn-laranja">📤 Importar Alunos da Planilha</button>
+
+        <hr class="separador">
+        <h3>Alunos na Nuvem (<span id="totalAlunos">0</span>)</h3>
+        <p style="font-size: 12px; color: gray; margin-bottom: 5px;">Gerencie os alunos cadastrados abaixo:</p>
+        <div class="lista-excluir-container" id="listaAlunosExcluir">
+            <p style="color: gray; font-size: 13px; text-align: center; padding: 15px;">Carregando alunos...</p>
+        </div>
+    </div>
+
+    <!-- ======================== ABA CÂMERA ======================== -->
+    <div id="leitor" class="section active">
+        <h2>Aponte o QR Code</h2>
+        <div id="reader"></div>
+        <div id="mensagem"></div>
+    </div>
+
+    <!-- ======================== ABA QR CODES ======================== -->
+    <div id="gerador" class="section">
+        <h2>Gerar QR Codes</h2>
+        <button onclick="imprimirQRCodes()" class="btn-verde">🖨️ Imprimir Todos</button>
+        <div id="qr-container"></div>
+    </div>
+
+    <!-- ======================== ABA HISTÓRICO ======================== -->
+    <div id="registos" class="section">
+        <h2>Histórico (Ao Vivo)</h2>
+
+        <!-- KPIs -->
+        <div class="kpi-row" id="kpiRow">
+            <div class="kpi-card verde">
+                <div class="kpi-num" id="kpiPresentes">--</div>
+                <div class="kpi-label">Presentes Hoje</div>
+            </div>
+            <div class="kpi-card vermelho">
+                <div class="kpi-num" id="kpiFaltas">--</div>
+                <div class="kpi-label">Faltas Hoje</div>
+            </div>
+            <div class="kpi-card azul">
+                <div class="kpi-num" id="kpiTurmaAbsent">--</div>
+                <div class="kpi-label">Ranking Absenteísmo</div>
+                <div class="kpi-detalhe" id="kpiTurmaAbsentDetalhe"></div>
+            </div>
+        </div>
+
+        <!-- FILTROS -->
+        <div class="filtro-container">
+            <h3>🔍 Filtros e Exportação</h3>
+            <div class="filtro-grid">
+                <div>
+                    <label class="field-label" style="font-size:12px;">Data Início:</label>
+                    <input type="date" id="dataInicioExcel">
+                </div>
+                <div>
+                    <label class="field-label" style="font-size:12px;">Data Fim:</label>
+                    <input type="date" id="dataFimExcel">
+                </div>
+                <div>
+                    <label class="field-label" style="font-size:12px;">Nome do Aluno:</label>
+                    <input type="text" id="filtroNome" placeholder="Buscar por nome...">
+                </div>
+                <div>
+                    <label class="field-label" style="font-size:12px;">Turma:</label>
+                    <input type="text" id="filtroTurma" placeholder="Ex: 3A">
+                </div>
+                <div>
+                    <label class="field-label" style="font-size:12px;">Turno:</label>
+                    <select id="filtroTurno">
+                        <option value="">Todos</option>
+                        <option value="Manhã">Manhã</option>
+                        <option value="Tarde">Tarde</option>
+                        <option value="Noite">Noite</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="field-label" style="font-size:12px;">Status:</label>
+                    <select id="filtroStatus">
+                        <option value="">Todos</option>
+                        <option value="Presença">Presença</option>
+                        <option value="Falta">Falta</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                <button onclick="aplicarFiltros()" class="btn-verde" style="flex:1; margin:0;">🔍 Aplicar Filtros</button>
+                <button onclick="exportarExcel()" class="btn-info" style="flex:1; margin:0;">📥 Exportar Excel</button>
+                <button onclick="limparDadosFiltrados()" style="flex:1; margin:0; background-color:#dc3545;">⚠️ Limpar Dados Filtrados</button>
+            </div>
+        </div>
+
+        <div class="tabela-wrapper">
+            <table id="tabelaRegistos">
+                <thead>
+                    <tr>
+                        <th>Matrícula</th>
+                        <th>Nome</th>
+                        <th>Turma</th>
+                        <th>Turno</th>
+                        <th>Data/Hora Entrada</th>
+                        <th>Data/Hora Saída</th>
+                        <th>Banco de Horas</th>
+                        <th>Faltas</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="corpoTabela">
+                    <tr><td colspan="9" style="text-align:center; color:gray; padding:20px;">Carregando registros...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CONFIRMAÇÃO -->
+<div id="modalConfirmacao" class="modal">
+    <div class="modal-content">
+        <h2 id="modalAcao" style="margin-top: 0;">Confirmação</h2>
+        <img id="modalFoto" src="" alt="Foto do Aluno">
+        <h3 id="modalNome">Nome do Aluno</h3>
+        <p id="modalInfoExtra" style="color:#555; font-size:13px; margin:5px 0;"></p>
+        <button id="btnConfirmarAcesso" class="btn-confirmar" onclick="confirmarAcesso()">✅ Confirmar</button>
+        <button class="btn-cancelar" onclick="fecharModal()">❌ Cancelar</button>
+    </div>
+</div>
+
+<script>
+// =========================================================================
+// FIREBASE CONFIG
+// =========================================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyD7bvM5b_l1UhRekuge9ex2xAbAz_fR71s",
+    authDomain: "entradav1.firebaseapp.com",
+    databaseURL: "https://entradav1-default-rtdb.firebaseio.com",
+    projectId: "entradav1",
+    storageBucket: "entradav1.firebasestorage.app",
+    messagingSenderId: "479561827512",
+    appId: "1:479561827512:web:d3bcd456576398a220204d"
+};
+
+if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "COLE_AQUI_A_SUA_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+    document.getElementById('statusConexao').innerHTML = "🟢 Conectado ao Firebase Online";
+}
+const db = (typeof firebase !== 'undefined' && firebase.apps.length > 0) ? firebase.database() : null;
+
+// =========================================================================
+// ESTADO GLOBAL
+// =========================================================================
+let alunosCadastrados = {};
+let registrosDeHoje = {};
+let todosRegistros = {};
+let scanPausado = false;
+let dadosPendentes = null;
+
+// =========================================================================
+// UTILITÁRIOS
+// =========================================================================
+function getDataHoje() { return new Date().toISOString().split('T')[0]; }
+
+function getDataHojeFormatada() {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+function getDateTimeFormatado(isoDate, hora) {
+    if (!isoDate || !hora) return '--';
+    const partes = isoDate.split('-');
+    if (partes.length !== 3) return hora;
+    return `${partes[2]}/${partes[1]}/${partes[0]} - ${hora}`;
+}
+
+function limparChaveFirebase(str) {
+    return str.trim().replace(/[\.#$\[\]\s\/]/g, '_');
+}
+
+function comprimirImagem(file, callback) {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = function(e) {
+        const img = new Image();
+        img.src = e.target.result;
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 250;
+            let width = img.width, height = img.height;
+            if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
+            else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+            canvas.width = width; canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            callback(canvas.toDataURL('image/jpeg', 0.6));
+        };
+    };
+}
+
+function calcularBancoHoras(entrada, saida) {
+    if (!entrada || !saida) return '--';
+    try {
+        const parseTime = (t) => {
+            const p = t.split(':');
+            return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseInt(p[2] || 0);
+        };
+        // extrai apenas a parte HH:MM:SS se vier com data
+        const extractTime = (s) => s.includes(' - ') ? s.split(' - ')[1] : s;
+        const e = parseTime(extractTime(entrada));
+        const s = parseTime(extractTime(saida));
+        const diff = s - e;
+        if (diff <= 0) return '--';
+        const h = Math.floor(diff / 3600);
+        const m = Math.floor((diff % 3600) / 60);
+        return `${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m`;
+    } catch(err) { return '--'; }
+}
+
+function calcularFaltasAluno(chaveAluno, dataInicioFiltro, dataFimFiltro) {
+    let faltas = 0;
+    const dataHoje = getDataHoje();
+    Object.keys(todosRegistros).forEach(dataChave => {
+        if (dataInicioFiltro && dataChave < dataInicioFiltro) return;
+        if (dataFimFiltro && dataChave > dataFimFiltro) return;
+        if (dataChave > dataHoje) return;
+        const regNoDia = todosRegistros[dataChave];
+        if (!regNoDia || !regNoDia[chaveAluno] || !regNoDia[chaveAluno].entrada) {
+            faltas++;
+        }
+    });
+    return faltas;
+}
+
+function badgeFaltas(qtd) {
+    let cls = 'faltas-verde';
+    if (qtd >= 4 && qtd <= 7) cls = 'faltas-amarelo';
+    if (qtd >= 8) cls = 'faltas-vermelho';
+    return `<span class="badge-faltas ${cls}">${qtd}/10</span>`;
+}
+
+function showSection(sectionId, tabEl) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(sectionId).classList.add('active');
+    if (tabEl) tabEl.classList.add('active');
+    if (sectionId === 'registos') atualizarTabelaHtml();
+}
+
+// =========================================================================
+// CONFIGURAÇÕES DA INSTITUIÇÃO
+// =========================================================================
+function carregarConfiguracoes() {
+    if (!db) return;
+    db.ref('configuracoes').once('value', snap => {
+        const cfg = snap.val();
+        if (!cfg) return;
+        if (cfg.nomeInstituicao) {
+            document.getElementById('nomeInstituicaoDisplay').textContent = cfg.nomeInstituicao;
+            document.getElementById('cfgNomeInstituicao').value = cfg.nomeInstituicao;
+        }
+        if (cfg.logo) {
+            const logoEl = document.getElementById('logoInstituicao');
+            logoEl.src = cfg.logo;
+            logoEl.style.display = 'block';
+        }
+    });
+}
+
+function salvarConfiguracoes() {
+    if (!db) { alert("Firebase não conectado."); return; }
+    const nome = document.getElementById('cfgNomeInstituicao').value.trim();
+    const fileInput = document.getElementById('cfgLogoInstituicao');
+
+    const salvar = (logoBase64) => {
+        const dados = {};
+        if (nome) dados.nomeInstituicao = nome;
+        if (logoBase64) dados.logo = logoBase64;
+
+        db.ref('configuracoes').update(dados).then(() => {
+            if (nome) document.getElementById('nomeInstituicaoDisplay').textContent = nome;
+            if (logoBase64) {
+                const logoEl = document.getElementById('logoInstituicao');
+                logoEl.src = logoBase64;
+                logoEl.style.display = 'block';
+            }
+            alert("Configurações salvas com sucesso!");
+        });
+    };
+
+    if (fileInput.files && fileInput.files[0]) {
+        comprimirImagem(fileInput.files[0], (b64) => salvar(b64));
+    } else {
+        salvar(null);
+    }
+}
+
+// =========================================================================
+// CADASTRO DE ALUNOS
+// =========================================================================
+function salvarAluno() {
+    if (!db) { alert("Configure o Firebase primeiro."); return; }
+    const nome = document.getElementById('nomeNovoAluno').value.trim();
+    const matricula = document.getElementById('matriculaNovoAluno').value.trim();
+    const turma = document.getElementById('turmaNovoAluno').value.trim();
+    const turno = document.getElementById('turnoNovoAluno').value;
+    const fileInput = document.getElementById('fotoNovoAluno');
+    const chaveEditando = document.getElementById('editandoChave').value;
+
+    if (!nome) { alert("Digite o nome do aluno!"); return; }
+    if (!matricula) { alert("Digite a matrícula do aluno!"); return; }
+
+    const chave = chaveEditando || limparChaveFirebase(nome + '_' + matricula);
+
+    const persistir = (fotoBase64) => {
+        const dadosAluno = {
+            nome: nome,
+            matricula: matricula,
+            turma: turma,
+            turno: turno,
+            foto: fotoBase64 || (chaveEditando && alunosCadastrados[chaveEditando] ? alunosCadastrados[chaveEditando].foto : '') || ''
+        };
+        db.ref(`alunos/${chave}`).set(dadosAluno).then(() => {
+            alert(chaveEditando ? `Cadastro de ${nome} atualizado!` : `Aluno(a) ${nome} cadastrado com sucesso!`);
+            limparFormCadastro();
+        });
+    };
+
+    if (fileInput.files && fileInput.files[0]) {
+        comprimirImagem(fileInput.files[0], persistir);
+    } else {
+        persistir(null);
+    }
+}
+
+function limparFormCadastro() {
+    document.getElementById('nomeNovoAluno').value = '';
+    document.getElementById('matriculaNovoAluno').value = '';
+    document.getElementById('turmaNovoAluno').value = '';
+    document.getElementById('turnoNovoAluno').value = '';
+    document.getElementById('fotoNovoAluno').value = '';
+    document.getElementById('editandoChave').value = '';
+    document.getElementById('btnSalvarAluno').textContent = '💾 Salvar Online';
+    document.getElementById('btnSalvarAluno').className = 'btn-verde';
+    document.getElementById('btnCancelarEdicao').style.display = 'none';
+}
+
+function cancelarEdicao() { limparFormCadastro(); }
+
+function editarAluno(chave) {
+    const aluno = alunosCadastrados[chave];
+    if (!aluno) return;
+    document.getElementById('nomeNovoAluno').value = aluno.nome || '';
+    document.getElementById('matriculaNovoAluno').value = aluno.matricula || '';
+    document.getElementById('turmaNovoAluno').value = aluno.turma || '';
+    document.getElementById('turnoNovoAluno').value = aluno.turno || '';
+    document.getElementById('editandoChave').value = chave;
+    document.getElementById('btnSalvarAluno').textContent = '✏️ Atualizar Cadastro';
+    document.getElementById('btnSalvarAluno').style.backgroundColor = '#fd7e14';
+    document.getElementById('btnCancelarEdicao').style.display = 'block';
+    document.getElementById('cadastro').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('nomeNovoAluno').focus();
+}
+
+function excluirAluno(chave, nome) {
+    if (!db) return;
+    if (confirm(`Tem certeza que deseja excluir "${nome}"?\nIsso removerá a foto e o QR Code do sistema.`)) {
+        db.ref(`alunos/${chave}`).remove()
+            .then(() => alert(`${nome} removido com sucesso!`))
+            .catch(err => alert("Erro: " + err));
+    }
+}
+
+function atualizarListaExcluirHTML() {
+    const container = document.getElementById('listaAlunosExcluir');
+    const chaves = Object.keys(alunosCadastrados);
+    document.getElementById('totalAlunos').textContent = chaves.length;
+
+    if (chaves.length === 0) {
+        container.innerHTML = "<p style='color:gray;font-size:13px;text-align:center;padding:15px;'>Nenhum aluno cadastrado ainda.</p>";
+        return;
+    }
+
+    let html = '';
+    chaves.forEach(chave => {
+        const a = alunosCadastrados[chave];
+        const iconeClipe = a.foto ? ' 📎' : '';
+        html += `<div class="aluno-row">
+            <div>
+                <div class="aluno-nome">${a.nome}${iconeClipe}</div>
+                <div class="aluno-info">Matrícula: ${a.matricula || '--'} | Turma: ${a.turma || '--'} | Turno: ${a.turno || '--'}</div>
+            </div>
+            <button class="btn-mini btn-laranja" onclick="editarAluno('${chave}')">✏️</button>
+            <button class="btn-mini btn-cancelar" onclick="excluirAluno('${chave}', '${a.nome.replace(/'/g,"\\'")}')">❌</button>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+// =========================================================================
+// IMPORTAÇÃO EM MASSA (XLSX/CSV)
+// =========================================================================
+function baixarPlanilhaModelo() {
+    const dados = [
+        { Nome: 'João da Silva', Matricula: '2024001', Turma: '3A', Turno: 'Manhã' },
+        { Nome: 'Maria Souza', Matricula: '2024002', Turma: '2B', Turno: 'Tarde' }
+    ];
+    const ws = XLSX.utils.json_to_sheet(dados);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Alunos');
+    XLSX.writeFile(wb, 'modelo_cadastro_alunos.xlsx');
+}
+
+function importarPlanilha() {
+    if (!db) { alert("Firebase não conectado."); return; }
+    const fileInput = document.getElementById('arquivoImportacao');
+    if (!fileInput.files || !fileInput.files[0]) {
+        alert("Selecione um arquivo .xlsx ou .csv para importar.");
+        return;
+    }
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws);
+            if (!rows || rows.length === 0) { alert("Planilha vazia ou inválida."); return; }
+
+            // Monta array de alunos válidos
+            const alunosParaSalvar = [];
+            rows.forEach((row, idx) => {
+                const nome = (row['Nome'] || row['nome'] || '').toString().trim();
+                const matricula = (row['Matricula'] || row['Matrícula'] || row['matricula'] || '').toString().trim();
+                const turma = (row['Turma'] || row['turma'] || '').toString().trim();
+                const turno = (row['Turno'] || row['turno'] || '').toString().trim();
+                if (!nome) return;
+                // Chave baseada em matrícula se disponível, senão nome+índice
+                const chaveBase = matricula ? matricula : (nome + '_' + idx);
+                const chave = limparChaveFirebase(chaveBase);
+                alunosParaSalvar.push({ chave, nome, matricula, turma, turno });
+            });
+
+            if (alunosParaSalvar.length === 0) { alert("Nenhum aluno válido encontrado na planilha."); return; }
+
+            // Salva cada aluno individualmente para garantir que o listener .on('value') seja disparado
+            const promessas = alunosParaSalvar.map(a =>
+                db.ref(`alunos/${a.chave}`).set({
+                    nome: a.nome,
+                    matricula: a.matricula,
+                    turma: a.turma,
+                    turno: a.turno,
+                    foto: ''
+                })
+            );
+
+            Promise.all(promessas).then(() => {
+                alert(`✅ ${alunosParaSalvar.length} aluno(s) importado(s) com sucesso!`);
+                fileInput.value = '';
+            }).catch(err => {
+                alert("Erro ao salvar alunos no Firebase: " + err.message);
+            });
+
+        } catch(err) {
+            alert("Erro ao ler planilha: " + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// =========================================================================
+// QR CODES
+// =========================================================================
+function atualizarTelaQRCodes() {
+    const container = document.getElementById('qr-container');
+    if (!container) return;
+    container.innerHTML = '';
+    const chaves = Object.keys(alunosCadastrados);
+    if (chaves.length === 0) {
+        container.innerHTML = '<p style="color:gray;text-align:center;padding:20px;">Nenhum aluno cadastrado.</p>';
+        return;
+    }
+    chaves.forEach((chave, idx) => {
+        const aluno = alunosCadastrados[chave];
+        const card = document.createElement('div');
+        card.className = 'qr-card';
+        const qrId = 'qr_' + chave.replace(/[^a-zA-Z0-9]/g, '_');
+        card.innerHTML = '<p style="margin:5px 0;font-size:14px;font-weight:bold;">' + aluno.nome + '</p>' +
+            '<p style="margin:0;font-size:11px;color:#888;">' + (aluno.matricula || '') + ' | ' + (aluno.turma || '') + '</p>' +
+            '<div id="' + qrId + '"></div>';
+        container.appendChild(card);
+        setTimeout(function() {
+            var el = document.getElementById(qrId);
+            if (el) {
+                try { new QRCode(el, { text: chave, width: 100, height: 100, correctLevel: QRCode.CorrectLevel.M }); }
+                catch(e) { console.warn('QRCode err:', chave, e); }
+            }
+        }, idx * 50);
+    });
+}
+
+function imprimirQRCodes() {
+    const conteudo = document.getElementById('qr-container').innerHTML;
+    if (!conteudo) { alert("Sem alunos para imprimir."); return; }
+    const janela = window.open('', '', 'height=600,width=800');
+    janela.document.write('<html><head><title>QR Codes</title><style>.qr-card{display:inline-block;margin:15px;text-align:center;font-family:Arial;border:1px solid #000;padding:10px;}</style></head><body>' + conteudo + '</body></html>');
+    janela.document.close();
+    setTimeout(() => janela.print(), 500);
+}
+
+// =========================================================================
+// SCANNER / ACESSO
+// =========================================================================
+function registarAcesso(chaveLida) {
+    if (scanPausado || !db) return;
+    const alunoInfo = alunosCadastrados[chaveLida];
+    const msgDiv = document.getElementById('mensagem');
+
+    if (!alunoInfo) {
+        scanPausado = true;
+        msgDiv.innerHTML = `<span class="warning">⚠️ QR Code não cadastrado no sistema.</span>`;
+        setTimeout(() => { msgDiv.innerHTML = ""; scanPausado = false; }, 3000);
+        return;
+    }
+
+    const dataHoje = getDataHoje();
+    const reg = registrosDeHoje[chaveLida];
+    let tipoAcao = "";
+
+    if (!reg || !reg.entrada) {
+        tipoAcao = "Entrada";
+    } else if (!reg.saida) {
+        tipoAcao = "Saída";
+    } else {
+        scanPausado = true;
+        msgDiv.innerHTML = `<span class="warning">⚠️ ${alunoInfo.nome} já entrou e saiu hoje.</span>`;
+        setTimeout(() => { msgDiv.innerHTML = ""; scanPausado = false; }, 3000);
+        return;
+    }
+
+    scanPausado = true;
+    dadosPendentes = { chave: chaveLida, aluno: alunoInfo, tipo: tipoAcao, dataHoje };
+
+    document.getElementById('modalAcao').textContent = `Confirmar ${tipoAcao}`;
+    document.getElementById('modalAcao').style.color = tipoAcao === "Entrada" ? "#007BFF" : "#FF8C00";
+    document.getElementById('modalNome').textContent = alunoInfo.nome;
+    document.getElementById('modalInfoExtra').textContent = `Turma: ${alunoInfo.turma || '--'} | Turno: ${alunoInfo.turno || '--'} | Matrícula: ${alunoInfo.matricula || '--'}`;
+    document.getElementById('modalFoto').src = alunoInfo.foto || 'https://via.placeholder.com/150/cccccc/666666?text=Sem+Foto';
+    document.getElementById('modalConfirmacao').style.display = 'flex';
+}
+
+function confirmarAcesso() {
+    if (!dadosPendentes || !db) return;
+    const { chave, aluno, tipo, dataHoje } = dadosPendentes;
+    const agora = new Date();
+    const horaAtual = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dataHoraFormatada = `${getDataHojeFormatada()} - ${horaAtual}`;
+    const msgDiv = document.getElementById('mensagem');
+
+    if (tipo === "Entrada") {
+        db.ref(`registros/${dataHoje}/${chave}`).set({
+            nome: aluno.nome,
+            matricula: aluno.matricula || '',
+            turma: aluno.turma || '',
+            turno: aluno.turno || '',
+            entrada: dataHoraFormatada,
+            saida: ''
+        });
+        msgDiv.innerHTML = `<span class="success">✅ ENTRADA: ${aluno.nome}</span>`;
+    } else {
+        db.ref(`registros/${dataHoje}/${chave}`).update({ saida: dataHoraFormatada });
+        msgDiv.innerHTML = `<span class="success">✅ SAÍDA: ${aluno.nome}</span>`;
+    }
+
+    fecharModal();
+    setTimeout(() => { msgDiv.innerHTML = ""; }, 3500);
+}
+
+function fecharModal() {
+    document.getElementById('modalConfirmacao').style.display = 'none';
+    dadosPendentes = null;
+    setTimeout(() => { scanPausado = false; }, 1500);
+}
+
+// =========================================================================
+// TABELA HISTÓRICO
+// =========================================================================
+function aplicarFiltros() { atualizarTabelaHtml(); }
+
+function atualizarTabelaHtml() {
+    const tbody = document.getElementById('corpoTabela');
+    const dataHoje = getDataHoje();
+
+    const filtroNome = (document.getElementById('filtroNome')?.value || '').toLowerCase().trim();
+    const filtroTurma = (document.getElementById('filtroTurma')?.value || '').toLowerCase().trim();
+    const filtroTurno = document.getElementById('filtroTurno')?.value || '';
+    const filtroStatus = document.getElementById('filtroStatus')?.value || '';
+    const dataInicio = document.getElementById('dataInicioExcel')?.value || '';
+    const dataFim = document.getElementById('dataFimExcel')?.value || '';
+
+    // Determinar datas a exibir
+    let datasParaExibir = [];
+    if (!dataInicio && !dataFim) {
+        datasParaExibir = [dataHoje];
+    } else {
+        Object.keys(todosRegistros).forEach(d => {
+            if (dataInicio && d < dataInicio) return;
+            if (dataFim && d > dataFim) return;
+            datasParaExibir.push(d);
+        });
+        if (datasParaExibir.length === 0) datasParaExibir = [dataHoje];
+    }
+
+    const todasChavesAlunos = Object.keys(alunosCadastrados);
+    let linhas = [];
+
+    datasParaExibir.forEach(dataChave => {
+        const regsNaData = (todosRegistros[dataChave]) || {};
+
+        // Registros existentes (presença)
+        Object.keys(regsNaData).forEach(chaveAluno => {
+            const reg = regsNaData[chaveAluno];
+            const aluno = alunosCadastrados[chaveAluno] || {};
+            const nome = reg.nome || aluno.nome || '--';
+            const matricula = reg.matricula || aluno.matricula || '--';
+            const turma = reg.turma || aluno.turma || '--';
+            const turno = reg.turno || aluno.turno || '--';
+            const entrada = reg.entrada || '--';
+            const saida = reg.saida || '--';
+            const bancoHoras = calcularBancoHoras(entrada === '--' ? '' : entrada, saida === '--' ? '' : saida);
+            const status = 'Presença';
+            const faltas = calcularFaltasAluno(chaveAluno, dataInicio, dataFim);
+
+            // Filtros
+            if (filtroNome && !nome.toLowerCase().includes(filtroNome)) return;
+            if (filtroTurma && !turma.toLowerCase().includes(filtroTurma)) return;
+            if (filtroTurno && turno !== filtroTurno) return;
+            if (filtroStatus && filtroStatus !== status) return;
+
+            linhas.push({ dataChave, chaveAluno, matricula, nome, turma, turno, entrada, saida, bancoHoras, faltas, status });
+        });
+
+        // Alunos sem registro (falta)
+        if (filtroStatus !== 'Presença') {
+            todasChavesAlunos.forEach(chaveAluno => {
+                if (regsNaData[chaveAluno] && regsNaData[chaveAluno].entrada) return; // já tem presença
+                const aluno = alunosCadastrados[chaveAluno];
+                if (!aluno) return;
+                const nome = aluno.nome || '--';
+                const matricula = aluno.matricula || '--';
+                const turma = aluno.turma || '--';
+                const turno = aluno.turno || '--';
+                const status = 'Falta';
+                const faltas = calcularFaltasAluno(chaveAluno, dataInicio, dataFim);
+
+                if (filtroNome && !nome.toLowerCase().includes(filtroNome)) return;
+                if (filtroTurma && !turma.toLowerCase().includes(filtroTurma)) return;
+                if (filtroTurno && turno !== filtroTurno) return;
+
+                linhas.push({ dataChave, chaveAluno, matricula, nome, turma, turno, entrada: '--', saida: '--', bancoHoras: '--', faltas, status });
+            });
+        }
+    });
+
+    // Atualizar KPIs (apenas hoje)
+    const regsHoje = todosRegistros[dataHoje] || {};
+    const presentesHoje = Object.values(regsHoje).filter(r => r.entrada).length;
+    const faltasHoje = todasChavesAlunos.filter(c => !regsHoje[c] || !regsHoje[c].entrada).length;
+    document.getElementById('kpiPresentes').textContent = presentesHoje;
+    document.getElementById('kpiFaltas').textContent = faltasHoje;
+
+    // Ranking absenteísmo por turma
+    const turmaFaltas = {};
+    const turmaTotais = {};
+    todasChavesAlunos.forEach(c => {
+        const aluno = alunosCadastrados[c];
+        if (!aluno || !aluno.turma) return;
+        const t = aluno.turma;
+        if (!turmaTotais[t]) turmaTotais[t] = 0;
+        if (!turmaFaltas[t]) turmaFaltas[t] = 0;
+        turmaTotais[t]++;
+        if (!regsHoje[c] || !regsHoje[c].entrada) turmaFaltas[t]++;
+    });
+    let piorTurma = '--', piorPct = 0;
+    Object.keys(turmaFaltas).forEach(t => {
+        const pct = turmaTotais[t] ? Math.round((turmaFaltas[t] / turmaTotais[t]) * 100) : 0;
+        if (pct > piorPct) { piorPct = pct; piorTurma = t; }
+    });
+    document.getElementById('kpiTurmaAbsent').textContent = piorTurma;
+    document.getElementById('kpiTurmaAbsentDetalhe').textContent = piorTurma !== '--' ? `${piorPct}% de faltas` : '';
+
+    // Renderizar tabela
+    if (linhas.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:gray; padding:20px;">Nenhum registro encontrado para os filtros aplicados.</td></tr>`;
+        return;
+    }
+
+    let html = '';
+    linhas.forEach(l => {
+        const cls = l.status === 'Presença' ? 'presenca' : 'falta';
+        const statusBadge = l.status === 'Presença'
+            ? `<span style="background:#28a745;color:white;padding:2px 8px;border-radius:10px;font-size:11px;">✅ Presença</span>`
+            : `<span style="background:#dc3545;color:white;padding:2px 8px;border-radius:10px;font-size:11px;">❌ Falta</span>`;
+        html += `<tr class="${cls}">
+            <td>${l.matricula}</td>
+            <td>${l.nome}</td>
+            <td>${l.turma}</td>
+            <td>${l.turno}</td>
+            <td>${l.entrada}</td>
+            <td>${l.saida}</td>
+            <td>${l.bancoHoras}</td>
+            <td>${badgeFaltas(l.faltas)}</td>
+            <td>${statusBadge}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+// =========================================================================
+// EXPORTAR EXCEL
+// =========================================================================
+function exportarExcel() {
+    if (!db) { alert("Firebase não conectado."); return; }
+    const dataInicio = document.getElementById('dataInicioExcel').value;
+    const dataFim = document.getElementById('dataFimExcel').value;
+    if (dataInicio && dataFim && dataInicio > dataFim) {
+        alert("A data início não pode ser maior que a data fim.");
+        return;
+    }
+
+    db.ref('registros').once('value').then(snap => {
+        const todos = snap.val();
+        if (!todos) { alert("Nenhum registro para exportar."); return; }
+
+        const rows = [];
+        Object.keys(todos).forEach(dataChave => {
+            if (dataInicio && dataChave < dataInicio) return;
+            if (dataFim && dataChave > dataFim) return;
+            const p = dataChave.split('-');
+            const dataFormatada = p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : dataChave;
+            const alunosNoDia = todos[dataChave];
+            Object.keys(alunosNoDia).forEach(chave => {
+                const r = alunosNoDia[chave];
+                const aluno = alunosCadastrados[chave] || {};
+                const bancoHoras = calcularBancoHoras(r.entrada, r.saida);
+                rows.push({
+                    'Data': dataFormatada,
+                    'Matrícula': r.matricula || aluno.matricula || '--',
+                    'Nome': r.nome || '--',
+                    'Turma': r.turma || aluno.turma || '--',
+                    'Turno': r.turno || aluno.turno || '--',
+                    'Data/Hora Entrada': r.entrada || '--',
+                    'Data/Hora Saída': r.saida || '--',
+                    'Banco de Horas': bancoHoras,
+                    'Status': (r.entrada ? 'Presença' : 'Falta')
+                });
+            });
+        });
+
+        if (rows.length === 0) { alert("Nenhum registro encontrado para o período."); return; }
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Histórico');
+        let nomeArq = 'historico_completo.xlsx';
+        if (dataInicio && dataFim) nomeArq = `historico_${dataInicio}_a_${dataFim}.xlsx`;
+        else if (dataInicio) nomeArq = `historico_a_partir_${dataInicio}.xlsx`;
+        else if (dataFim) nomeArq = `historico_ate_${dataFim}.xlsx`;
+        XLSX.writeFile(wb, nomeArq);
+    }).catch(err => alert("Erro ao exportar: " + err));
+}
+
+// =========================================================================
+// LIMPAR DADOS FILTRADOS
+// =========================================================================
+function limparDadosFiltrados() {
+    if (!db) { alert("Firebase não conectado."); return; }
+
+    const dataInicio = document.getElementById('dataInicioExcel').value;
+    const dataFim = document.getElementById('dataFimExcel').value;
+
+    if (!dataInicio && !dataFim) {
+        alert("⚠️ Atenção: Nenhum período selecionado.\n\nDefina ao menos uma Data Início ou Data Fim nos filtros antes de limpar, para evitar apagar todo o histórico acidentalmente.");
+        return;
+    }
+
+    // Monta descrição do período para o confirm
+    const fmt = (iso) => {
+        const p = iso.split('-');
+        return `${p[2]}/${p[1]}/${p[0]}`;
+    };
+    let periodoMsg = '';
+    if (dataInicio && dataFim) periodoMsg = `de ${fmt(dataInicio)} até ${fmt(dataFim)}`;
+    else if (dataInicio) periodoMsg = `a partir de ${fmt(dataInicio)}`;
+    else periodoMsg = `até ${fmt(dataFim)}`;
+
+    const confirmado = confirm(
+        `⚠️ ATENÇÃO — AÇÃO IRREVERSÍVEL!\n\n` +
+        `Tem certeza que deseja apagar permanentemente todos os registros de presença/falta do período:\n\n` +
+        `📅 ${periodoMsg}\n\n` +
+        `Esta ação não pode ser desfeita. Os dados de cadastro dos alunos NÃO serão afetados.`
+    );
+    if (!confirmado) return;
+
+    // Determina quais chaves de data apagar com base nos filtros de data
+    const datasParaApagar = Object.keys(todosRegistros).filter(dataChave => {
+        if (dataInicio && dataChave < dataInicio) return false;
+        if (dataFim && dataChave > dataFim) return false;
+        return true;
+    });
+
+    if (datasParaApagar.length === 0) {
+        alert("Nenhum registro encontrado para o período selecionado.");
+        return;
+    }
+
+    // Remove cada data do Firebase
+    const promessas = datasParaApagar.map(dataChave =>
+        db.ref(`registros/${dataChave}`).remove()
+    );
+
+    Promise.all(promessas).then(() => {
+        alert(`✅ Registros do período ${periodoMsg} removidos com sucesso!\n\n${datasParaApagar.length} dia(s) de registros apagados.`);
+    }).catch(err => {
+        alert("Erro ao apagar registros: " + err.message);
+    });
+}
+
+// =========================================================================
+// LISTENERS FIREBASE
+// =========================================================================
+if (db) {
+    db.ref('alunos').on('value', snap => {
+        alunosCadastrados = snap.val() || {};
+        atualizarTelaQRCodes();
+        atualizarListaExcluirHTML();
+        document.getElementById('totalAlunos').textContent = Object.keys(alunosCadastrados).length;
+    });
+
+    db.ref('registros').on('value', snap => {
+        todosRegistros = snap.val() || {};
+        registrosDeHoje = todosRegistros[getDataHoje()] || {};
+        if (document.getElementById('registos').classList.contains('active')) {
+            atualizarTabelaHtml();
+        }
+    });
+
+    db.ref(`registros/${getDataHoje()}`).on('value', snap => {
+        registrosDeHoje = snap.val() || {};
+    });
+
+    carregarConfiguracoes();
+}
+
+// =========================================================================
+// INICIALIZAÇÃO DO SCANNER
+// =========================================================================
+window.addEventListener('load', () => {
+    const scanner = new Html5QrcodeScanner(
+        "reader",
+        { fps: 10, qrbox: { width: 250, height: 250 }, videoConstraints: { facingMode: "environment" } },
+        false
+    );
+    scanner.render(text => registarAcesso(text), () => {});
+
+    // Define data de hoje nos filtros por padrão
+    const hoje = getDataHoje();
+    if (document.getElementById('dataInicioExcel')) document.getElementById('dataInicioExcel').value = hoje;
+    if (document.getElementById('dataFimExcel')) document.getElementById('dataFimExcel').value = hoje;
+});
+</script>
+</body>
+</html>
